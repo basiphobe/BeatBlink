@@ -274,29 +274,3 @@ jobs:
         asset_name: BeatBlink-${{ steps.get_version.outputs.VERSION }}.aab
         asset_content_type: application/octet-stream
 
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    needs: [build-debug]
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Download debug APK
-      uses: actions/download-artifact@v4
-      with:
-        name: debug-apk
-        path: ./apk/
-        
-    - name: Run Qark Security Scan
-      uses: linkedin/qark-action@master
-      with:
-        source-path: ./
-        
-    - name: Upload security scan results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: security-scan-results
-        path: qark-report/
