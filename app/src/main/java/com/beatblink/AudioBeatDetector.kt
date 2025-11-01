@@ -7,6 +7,7 @@ import android.util.Log
 import be.tarsos.dsp.AudioDispatcher
 import be.tarsos.dsp.AudioEvent
 import be.tarsos.dsp.AudioProcessor
+import be.tarsos.dsp.filters.LowPassFS
 import be.tarsos.dsp.io.TarsosDSPAudioFormat
 import be.tarsos.dsp.io.TarsosDSPAudioInputStream
 import be.tarsos.dsp.onsets.OnsetHandler
@@ -42,19 +43,27 @@ class AudioBeatDetector {
         private const val OVERLAP = 0 // No overlap for real-time performance
         private const val SOFTWARE_GAIN = 3.0f // Amplify signal 3x for better sensitivity
         
+        // Bass filtering for kick drum emphasis
+        private const val BASS_FILTER_CUTOFF = 200f // Hz - isolate kick drum fundamentals (20-100Hz) - narrow for cleaner detection
+        
         // Beat detection parameters - TUNING KNOBS
         private const val ONSET_THRESHOLD = 0.3 // Raise spectral threshold to reduce false positives
         private const val ONSET_SENSITIVITY = 1.0 // For ComplexOnsetDetector
         
         // Simple energy-based detection for more immediate response
-        private const val ENERGY_THRESHOLD = 1.08 // Multiplier above recent average (higher = less sensitive)
-        private const val ENERGY_MIN_LEVEL = 0.05f // Minimum absolute level after gain (higher = ignore quiet sounds)
+        private const val ENERGY_THRESHOLD = 1.15 // Multiplier above recent average (raised from 1.08 for cleaner detection)
+        private const val ENERGY_MIN_LEVEL = 0.08f // Minimum absolute level after gain (raised from 0.05 to ignore weaker hits)
         private const val ENERGY_HISTORY_SIZE = 20 // Frames to average (longer = more stable)
         
         private const val MIN_BEAT_INTERVAL_MS = 250L // Prevent rapid double-triggers
         
         // BPM estimation
         private const val BPM_HISTORY_SIZE = 8
+        
+        // BPM locking - once locked, resist small changes
+        private const val BPM_LOCK_THRESHOLD = 5 // Beats needed to establish lock
+        private const val BPM_TOLERANCE_PERCENT = 5 // Allow ±5% variation while locked
+        private const val BPM_CHANGE_THRESHOLD = 12 // BPM difference to force unlock
     }
     
     private var audioRecord: AudioRecord? = null
@@ -77,6 +86,10 @@ class AudioBeatDetector {
     // Beat detection state
     private var lastBeatTime = 0L
     private val beatIntervals = ArrayDeque<Long>(BPM_HISTORY_SIZE)
+    
+    // BPM locking state
+    private var lockedBPM = 0
+    private var consecutiveBeatsInRange = 0
 
     
     /**
@@ -115,7 +128,6 @@ class AudioBeatDetector {
      */
     private inner class LevelMonitor : AudioProcessor {
         private val energyHistory = ArrayDeque<Float>(ENERGY_HISTORY_SIZE)
-        private var frameCount = 0
         
         override fun process(audioEvent: AudioEvent): Boolean {
             val buffer = audioEvent.floatBuffer
@@ -143,16 +155,8 @@ class AudioBeatDetector {
                 val avgEnergy = energyHistory.average().toFloat()
                 val threshold = avgEnergy * ENERGY_THRESHOLD
                 
-                frameCount++
-                
-                // Log every frame when there's significant energy
-                if (maxSample > 0.15f || frameCount % 50 == 0) {
-                    Log.d(TAG, "Energy check: current=${"%.3f".format(avgLevel)}, avg=${"%.3f".format(avgEnergy)}, max=${"%.3f".format(maxSample)}, threshold=${"%.3f".format(threshold)}, minLevel=$ENERGY_MIN_LEVEL, needsAbove=${avgLevel > threshold}, needsMax=${maxSample > ENERGY_MIN_LEVEL}")
-                }
-                
                 // Detect sharp energy spike
                 if (avgLevel > threshold && maxSample > ENERGY_MIN_LEVEL) {
-                    Log.d(TAG, "✓✓✓ Energy beat: level=${"%.3f".format(avgLevel)}, max=${"%.3f".format(maxSample)}")
                     onBeatDetected()
                 }
             }
@@ -203,7 +207,6 @@ class AudioBeatDetector {
             }
             
             audioRecord?.startRecording()
-            Log.d(TAG, "AudioRecord started")
             
             // Create TarsosDSP format
             val format = TarsosDSPAudioFormat(
@@ -223,18 +226,13 @@ class AudioBeatDetector {
             }
             
             val audioStream = object : TarsosDSPAudioInputStream {
-                private var readCount = 0
-                
                 override fun skip(bytes: Long): Long = inputStream.skip(bytes)
                 
                 override fun read(b: ByteArray, off: Int, len: Int): Int {
-                    val result = inputStream.read(b, off, len)
-                    readCount++
-                    return result
+                    return inputStream.read(b, off, len)
                 }
                 
                 override fun close() {
-                    Log.d(TAG, "AudioStream closed after $readCount reads")
                     inputStream.close()
                 }
                 
@@ -244,12 +242,15 @@ class AudioBeatDetector {
             
             dispatcher = AudioDispatcher(audioStream, BUFFER_SIZE, OVERLAP)
             
+            // Add lowpass filter to isolate bass/kick drum frequencies
+            val bassFilter = LowPassFS(BASS_FILTER_CUTOFF, SAMPLE_RATE.toFloat())
+            dispatcher?.addAudioProcessor(bassFilter)
+            
             // Add level monitor with energy-based detection
             dispatcher?.addAudioProcessor(LevelMonitor())
             
-            // Also add ComplexOnsetDetector for musical beat detection
-            val onsetHandler = OnsetHandler { time, energy ->
-                Log.d(TAG, "ComplexOnset detected at ${time}s (energy=$energy)")
+            // Add ComplexOnsetDetector for spectral beat detection
+            val onsetHandler = OnsetHandler { _, _ ->
                 onBeatDetected()
             }
             
@@ -261,25 +262,21 @@ class AudioBeatDetector {
             onsetDetector.setHandler(onsetHandler)
             dispatcher?.addAudioProcessor(onsetDetector)
             
-            Log.d(TAG, "AudioDispatcher configured with hybrid detection (energy + spectral)")
-            
             // Clear state
             beatIntervals.clear()
             lastBeatTime = 0L
+            lockedBPM = 0
+            consecutiveBeatsInRange = 0
             _isRecording.value = true
             
             // Start dispatcher in background thread
             dispatcherJob = CoroutineScope(Dispatchers.IO).launch {
-                Log.d(TAG, "Starting AudioDispatcher...")
                 try {
                     dispatcher?.run()
-                    Log.d(TAG, "AudioDispatcher finished")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in AudioDispatcher", e)
                 }
             }
-            
-            Log.d(TAG, "Started recording with TarsosDSP")
         } catch (e: SecurityException) {
             Log.e(TAG, "Permission denied", e)
         } catch (e: Exception) {
@@ -308,8 +305,6 @@ class AudioBeatDetector {
         _isRecording.value = false
         _isBeat.value = false
         _audioLevel.value = 0f
-        
-        Log.d(TAG, "Stopped recording")
     }
     
     
@@ -324,8 +319,6 @@ class AudioBeatDetector {
             return
         }
         
-        Log.d(TAG, "✓ BEAT accepted (${currentTime - lastBeatTime}ms since last)")
-        
         // Flash the UI
         CoroutineScope(Dispatchers.Main).launch {
             _isBeat.value = true
@@ -336,7 +329,6 @@ class AudioBeatDetector {
         // Calculate BPM from inter-beat intervals
         if (lastBeatTime > 0) {
             val interval = currentTime - lastBeatTime
-            Log.d(TAG, "  Interval: ${interval}ms")
             
             beatIntervals.addLast(interval)
             if (beatIntervals.size > BPM_HISTORY_SIZE) {
@@ -350,6 +342,7 @@ class AudioBeatDetector {
     
     /**
      * Update BPM estimate from recent beat intervals.
+     * Uses BPM locking: once a tempo is established, stick to it unless there's a significant change.
      */
     private fun updateBPM() {
         if (beatIntervals.size < 2) {
@@ -361,12 +354,47 @@ class AudioBeatDetector {
         val medianInterval = sortedIntervals[sortedIntervals.size / 2]
         
         // Convert interval (ms) to BPM
-        val estimatedBPM = (60000.0 / medianInterval).toInt()
+        val rawBPM = (60000.0 / medianInterval).toInt()
         
-        // Only update if reasonable BPM range (60-200)
-        if (estimatedBPM in 60..200) {
-            _bpm.value = estimatedBPM
-            Log.d(TAG, "BPM updated: $estimatedBPM (from ${beatIntervals.size} intervals)")
+        // Only process reasonable BPM range (60-200)
+        if (rawBPM !in 60..200) {
+            return
+        }
+        
+        // BPM LOCKING LOGIC
+        if (lockedBPM == 0) {
+            // Not locked yet - establish lock after consistent beats
+            consecutiveBeatsInRange++
+            if (consecutiveBeatsInRange >= BPM_LOCK_THRESHOLD) {
+                lockedBPM = rawBPM
+                _bpm.value = lockedBPM
+            } else {
+                // Still establishing tempo, show raw BPM
+                _bpm.value = rawBPM
+            }
+        } else {
+            // Already locked - check if raw BPM is within tolerance
+            val tolerance = (lockedBPM * BPM_TOLERANCE_PERCENT) / 100
+            val minBPM = lockedBPM - tolerance
+            val maxBPM = lockedBPM + tolerance
+            
+            if (rawBPM in minBPM..maxBPM) {
+                // Within tolerance - stay locked
+                consecutiveBeatsInRange++
+            } else {
+                // Outside tolerance - check if it's a significant change
+                val bpmDiff = kotlin.math.abs(rawBPM - lockedBPM)
+                
+                if (bpmDiff >= BPM_CHANGE_THRESHOLD) {
+                    // Significant change detected - unlock and re-establish
+                    lockedBPM = 0
+                    consecutiveBeatsInRange = 1
+                    _bpm.value = rawBPM
+                } else {
+                    // Minor deviation - reset streak but stay locked
+                    consecutiveBeatsInRange = 0
+                }
+            }
         }
     }
 }

@@ -19,7 +19,8 @@ This is an Android Kotlin Jetpack Compose app that provides live audio-reactive 
 Uses TarsosDSP library (v2.5) with ComplexOnsetDetector via AudioDispatcher:
 - Professional-grade spectral onset detection
 - Custom AudioRecordInputStream wraps AudioRecord for TarsosDSP compatibility
-- AudioDispatcher manages processing pipeline: LevelMonitor → ComplexOnsetDetector
+- AudioDispatcher manages processing pipeline: LowPassFS (200Hz) → LevelMonitor → ComplexOnsetDetector
+- **Bass filtering**: 200Hz lowpass filter isolates kick drum frequencies before energy detection
 - Adaptive threshold and sensitivity parameters
 - Refractory period (minimum interval between beats)
 - BPM estimation from recent inter-beat intervals using median filtering
@@ -34,9 +35,13 @@ Uses TarsosDSP library (v2.5) with ComplexOnsetDetector via AudioDispatcher:
 
 ## Tuning Parameters
 Located in AudioBeatDetector:
-- `ONSET_THRESHOLD`: Beat sensitivity (default: 0.1, lower = more sensitive, TarsosDSP default is 8.0)
-- `ONSET_SENSITIVITY`: Response time (default: 1.0, lower = faster)
-- `MIN_BEAT_INTERVAL_MS`: Refractory period between beats (default: 200ms)
+- `BASS_FILTER_CUTOFF`: Lowpass filter frequency (200Hz - isolates kick drum fundamentals 20-100Hz)
+- `ONSET_THRESHOLD`: Spectral sensitivity (0.3, lower = more sensitive)
+- `ONSET_SENSITIVITY`: Response time (1.0, lower = faster)
+- `MIN_BEAT_INTERVAL_MS`: Refractory period between beats (250ms)
+- `ENERGY_THRESHOLD`: Energy spike multiplier (1.15 = 15% above rolling average)
+- `ENERGY_MIN_LEVEL`: Minimum amplitude threshold (0.08 after 3x gain)
+- `SOFTWARE_GAIN`: Fixed at 3.0x (user-validated perfect, do not modify)
 
 ## Build Instructions
 See README.md for build/run commands from VS Code terminal.
