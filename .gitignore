@@ -88,3 +88,8 @@ lint/tmp/
 
 # Android Profiling
 *.hprof
+
+# Android Keystore and CI/CD
+app/keystore.jks
+key.properties
+signing.properties

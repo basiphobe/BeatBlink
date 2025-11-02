@@ -1,21 +1,70 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.kts.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# BeatBlink ProGuard Rules
+# Optimizations and obfuscation rules for release builds
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep all classes in the main package
+-keep class com.beatblink.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep TarsosDSP library classes (audio processing)
+-keep class be.tarsos.dsp.** { *; }
+-dontwarn be.tarsos.dsp.**
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep AudioBeatDetector specifically
+-keepclassmembers class com.beatblink.AudioBeatDetector {
+    public *;
+}
+
+# Keep ViewModel classes
+-keep class * extends androidx.lifecycle.ViewModel {
+    <init>();
+}
+
+# Keep Compose UI classes
+-keep class androidx.compose.** { *; }
+-dontwarn androidx.compose.**
+
+# Keep Accompanist permissions
+-keep class com.google.accompanist.permissions.** { *; }
+
+# Keep Kotlin coroutines
+-keepclassmembers class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# Keep StateFlow and Flow classes
+-keep class kotlinx.coroutines.flow.** { *; }
+
+# Android specific rules
+-keep class android.media.** { *; }
+-keep class androidx.lifecycle.** { *; }
+
+# Remove logs in release builds
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int i(...);
+    public static int w(...);
+    public static int d(...);
+    public static int e(...);
+}
+
+# Keep native methods
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Keep enum classes
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# Keep Parcelable classes
+-keepclassmembers class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator CREATOR;
+}
+
+# Don't warn about missing classes that aren't available on Android
+-dontwarn java.awt.**
+-dontwarn javax.sound.**
+-dontwarn sun.misc.**
+-dontwarn java.lang.management.**
+-dontwarn javax.naming.**
