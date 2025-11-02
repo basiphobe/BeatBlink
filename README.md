@@ -51,7 +51,25 @@ The APK will be generated at: `app/build/outputs/apk/debug/app-debug.apk`
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### 4. Run the app
+### 4. Building Release APK
+
+For production releases:
+
+```bash
+# One-time setup: Generate signing keystore
+keytool -genkey -v -keystore app/keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias beatblink
+
+# Update gradle.properties with your keystore passwords
+# Then build release APK
+./build-release.sh
+
+# Or manually
+./gradlew assembleRelease
+```
+
+The release APK will be at: `app/build/outputs/apk/release/app-release.apk`
+
+### 5. Run the app
 
 ```bash
 # Launch on device (requires device/emulator connected)

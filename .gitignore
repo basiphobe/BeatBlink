@@ -29,6 +29,11 @@ captures/
 *.ap_
 *.aab
 
+# Signing and security
+app/keystore.jks
+gradle.properties
+local.properties
+
 # Files for the ART/Dalvik VM
 *.dex
 
