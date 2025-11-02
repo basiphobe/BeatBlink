@@ -11,8 +11,8 @@ android {
         applicationId = "com.beatblink"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.0.3"
+        versionCode = 7
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
