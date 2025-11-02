@@ -129,22 +129,48 @@ private const val MIN_BEAT_INTERVAL_MS = 300L
 ✅ BPM stabilizes to plausible range (80-160) after a few seconds  
 ✅ Start/Stop works and releases microphone properly  
 
+## Testing
+
+The app includes comprehensive unit tests and integration tests:
+
+```bash
+# Run unit tests (fast, no emulator required)
+./gradlew testDebugUnitTest
+
+# Run integration tests (requires emulator/device with microphone)
+./gradlew connectedDebugAndroidTest
+
+# Build and test
+./gradlew assembleDebug testDebugUnitTest
+```
+
+### Test Coverage
+- **Unit Tests**: Beat detection algorithms, BPM calculation, state management
+- **Integration Tests**: Full audio pipeline, UI interactions, permissions
+- **12 test methods** covering mathematical correctness and architecture patterns
+
+See [TESTING.md](TESTING.md) for detailed testing documentation.
+
 ## Project Structure
 
 ```
 BeatBlink/
 ├── app/
 │   ├── build.gradle.kts          # App dependencies and SDK versions
-│   ├── src/main/
-│   │   ├── AndroidManifest.xml   # Permissions and app config
-│   │   ├── java/com/beatblink/
-│   │   │   ├── MainActivity.kt   # Main UI and Compose screens
-│   │   │   ├── MainViewModel.kt  # State management
-│   │   │   ├── AudioBeatDetector.kt  # Beat detection logic
-│   │   │   └── ui/theme/         # Compose theme
-│   │   └── res/                  # Resources (strings, colors, etc.)
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── AndroidManifest.xml   # Permissions and app config
+│   │   │   ├── java/com/beatblink/
+│   │   │   │   ├── MainActivity.kt   # Main UI and Compose screens
+│   │   │   │   ├── MainViewModel.kt  # State management
+│   │   │   │   ├── AudioBeatDetector.kt  # Beat detection logic
+│   │   │   │   └── ui/theme/         # Compose theme
+│   │   │   └── res/                  # Resources (strings, colors, etc.)
+│   │   ├── test/                     # Unit tests (no Android dependencies)
+│   │   └── androidTest/              # Integration tests (requires emulator)
 ├── build.gradle.kts              # Root project config
 ├── settings.gradle.kts           # Project settings
+├── TESTING.md                    # Testing documentation
 └── README.md                     # This file
 ```
 
