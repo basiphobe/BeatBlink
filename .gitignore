@@ -98,3 +98,5 @@ lint/tmp/
 app/keystore.jks
 key.properties
 signing.properties
+keystore_base64.txt
+github-secrets.txt
